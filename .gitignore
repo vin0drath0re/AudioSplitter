@@ -30,3 +30,26 @@
 *.exe
 *.out
 *.app
+
+# Visual Studio folders and files
+.vs/
+*.VC.db
+*.suo
+*.user
+*.log
+*.obj
+*.exe
+*.pdb
+*.ipch/
+*.opensdf
+*.tlog/
+*.lastbuildstate
+*.cache
+*.ilk
+
+# Output folders
+Debug/
+Release/
+x64/
+build/
+bin/
