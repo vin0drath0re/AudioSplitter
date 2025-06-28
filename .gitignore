@@ -46,6 +46,7 @@
 *.lastbuildstate
 *.cache
 *.ilk
+.vscode/
 
 # Output folders
 Debug/
