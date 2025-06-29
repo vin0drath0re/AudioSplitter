@@ -14,7 +14,12 @@ int wmain() {
                    << L"  remove <index>          - Remove output device\n"
                    << L"  start                   - Start audio relay\n"
                    << L"  stop                    - Stop audio relay\n"
-                   << L"  exit                    - Exit program\n";
+                   << L"  exit                    - Exit program\n"
+                   << L"  volume <index> <0-100>  - Set volume for specific output device\n"
+                   << L"  global <0-100>          - Set global volume multiplier\n"
+                   << L"  clear                   - Remove all output devices\n"
+                   << L"  status                  - Show current status\n";
+
     while (true) {
         std::wcout << L"AudioSplitter> ";
 
@@ -41,7 +46,30 @@ int wmain() {
             int index;
             if (iss >> index) {
                 if (!relay.removeOutputDevice(index))
-                    std::wcout << L"Output device removed.\n";
+                    std::wcout << L"Output device not found.\n";
+            }
+        } else if (command == L"clear") {
+            if (!relay.removeAllOutputDevices())
+                std::wcout << L"No output devices to remove.\n";
+        } else if (command == L"status") {
+            relay.showStatus();
+        } else if (command == L"volume") {
+            int index;
+            float volume;
+            if (iss >> index >> volume) {
+                volume /= 100.0f;  
+                if (!relay.setDeviceVolume(index, volume))
+                    std::wcout << L"Invalid index or volume.\n";
+            } else {
+                std::wcout << L"Usage: volume <index> <0-100>\n";
+            }
+        } else if (command == L"global") {
+            float volume;
+            if (iss >> volume) {
+                volume /= 100.0f; 
+                relay.setGlobalVolume(volume);
+            } else {
+                std::wcout << L"Usage: global <0-100>\n";
             }
         } else if (command == L"start") {
             relay.start();

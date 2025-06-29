@@ -33,6 +33,11 @@ void AudioRelay::shutdown() {
     if (enumerator) enumerator->Release();
     enumerator = nullptr;
 
+    for (auto& [dev, volume] : volumeControls) {
+        if (volume) volume->Release();
+    }
+    volumeControls.clear();
+
     CoUninitialize();
 }
 
@@ -81,8 +86,29 @@ bool AudioRelay::setLoopbackDevice(int index) {
 
 bool AudioRelay::addOutputDevice(int index) {
     if (!deviceMap.count(index)) return false;
-    outputDevices.push_back(deviceMap[index]);
-    deviceMap[index]->AddRef();
+
+    
+    IMMDevice* device = deviceMap[index];
+    device->AddRef();
+    outputDevices.push_back(device);
+
+    IAudioEndpointVolume* endpointVolume = nullptr;
+    HRESULT hr = device->Activate(__uuidof(IAudioEndpointVolume), CLSCTX_ALL, nullptr, (void**)&endpointVolume);
+    if (SUCCEEDED(hr)) {
+        volumeControls[device] = endpointVolume;
+
+         float currentVolume = 1.0f;
+        if (SUCCEEDED(endpointVolume->GetMasterVolumeLevelScalar(&currentVolume))) {
+            deviceVolumes[device] = currentVolume / globalVolume; 
+        } else {
+            deviceVolumes[device] = 1.0f; 
+        }
+
+        applyEffectiveVolume(device);
+
+    }
+
+    
     std::wcout << L"Output device added: " << getDeviceName(deviceMap[index]) << std::endl;
     return true;
 }
@@ -94,11 +120,106 @@ bool AudioRelay::removeOutputDevice(int index) {
     if (it != outputDevices.end()) {
         (*it)->Release();
         outputDevices.erase(it);
+        if (volumeControls.count(toRemove)) {
+        volumeControls[toRemove]->Release();
+        volumeControls.erase(toRemove);
+        }
+        
+        if (deviceVolumes.count(toRemove)) {
+            deviceVolumes.erase(toRemove);
+        }
         std::wcout << L"Output device removed: " << getDeviceName(toRemove) << std::endl;
         return true;
     }
+
+
     return false;
 }
+
+bool AudioRelay::removeAllOutputDevices() {
+    if (outputDevices.empty()) return false;
+
+    for (auto& dev : outputDevices) {
+        dev->Release();
+        if (volumeControls.count(dev)) {
+            volumeControls[dev]->Release();
+            volumeControls.erase(dev);
+        }
+        if (deviceVolumes.count(dev)) {
+            deviceVolumes.erase(dev);
+        }
+    }
+    outputDevices.clear();
+    std::wcout << L"All output devices removed.\n";
+    return true;
+}
+
+
+void AudioRelay::applyEffectiveVolume(IMMDevice* device) {
+    if (!volumeControls.count(device)) return;
+    float individual = deviceVolumes.count(device) ? deviceVolumes[device] : 1.0f;
+    float effective = std::clamp(globalVolume * individual, 0.0f, 1.0f);
+    volumeControls[device]->SetMasterVolumeLevelScalar(effective, nullptr);
+}
+
+
+bool AudioRelay::setDeviceVolume(int index, float volume) {
+    if (!deviceMap.count(index)) return false;
+    IMMDevice* device = deviceMap[index];
+    deviceVolumes[device] = std::clamp(volume, 0.0f, 1.0f);
+    std::wcout << L"Device [" << getDeviceName(device) << L"] volume set to "
+               << int(volume * 100) << L"%\n";
+
+    applyEffectiveVolume(device);
+    return true;
+}
+
+
+void AudioRelay::setGlobalVolume(float volume) {
+    globalVolume = std::clamp(volume, 0.0f, 1.0f);
+    std::wcout << L"Global volume set to " << int(globalVolume * 100) << L"%\n";
+
+    for (auto& dev : outputDevices) {
+        applyEffectiveVolume(dev);
+    }
+}
+
+void AudioRelay::showStatus() {
+    std::wcout << L"\n=== Audio Relay Status ===\n";
+
+    // Global volume
+    std::wcout << L"Global Volume: " << int(globalVolume * 100) << L"%\n";
+
+    // Loopback device
+    if (loopbackDevice) {
+        std::wcout << L"Loopback Device: " << getDeviceName(loopbackDevice) << std::endl;
+    } else {
+        std::wcout << L"Loopback Device: (not set)\n";
+    }
+
+    // Output devices
+    if (outputDevices.empty()) {
+        std::wcout << L"No output devices.\n";
+    } else {
+        std::wcout << L"Output Devices:\n";
+        for (IMMDevice* dev : outputDevices) {
+            std::wstring name = getDeviceName(dev);
+
+            float individual = deviceVolumes.count(dev) ? deviceVolumes[dev] : 1.0f;
+            float effective = std::clamp(globalVolume * individual, 0.0f, 1.0f);
+
+            std::wcout << L" - " << name
+                       << L"\n     Individual Volume: " << int(individual * 100) << L"%"
+                       << L"\n     Effective Volume:  " << int(effective * 100) << L"%\n";
+        }
+    }
+
+    std::wcout << L"Relay Status: " << (running ? L"Running" : L"Stopped") << L"\n";
+    std::wcout << L"===========================\n\n";
+}
+
+
+
 
 void AudioRelay::start() {
     if (running) {
@@ -195,3 +316,6 @@ void AudioRelay::run() {
     captureClient->Release();
     audioCapture->Release();
 }
+
+
+

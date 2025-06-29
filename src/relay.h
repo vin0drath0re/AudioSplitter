@@ -8,6 +8,8 @@
 #include <map>
 #include <thread>
 #include <memory>
+#include <endpointvolume.h>
+
 
 class AudioRelay {
 public:
@@ -21,7 +23,11 @@ public:
     bool setLoopbackDevice(int index);
     bool addOutputDevice(int index);
     bool removeOutputDevice(int index);
+    bool removeAllOutputDevices();
+    bool setDeviceVolume(int index, float volume);
+    void setGlobalVolume(float volume);
 
+    void showStatus();
     void start();
     void stop();
 
@@ -38,4 +44,10 @@ private:
 
     std::atomic<bool> running = false;
     std::thread relayThread;
+
+    void applyEffectiveVolume(IMMDevice* device);
+    float globalVolume = 1.0f;
+    std::map<IMMDevice*, float> deviceVolumes; 
+    std::map<IMMDevice*, IAudioEndpointVolume*> volumeControls; 
+
 };
